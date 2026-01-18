@@ -1,4 +1,6 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 export async function checkPooledRateLimit(): Promise<{
   allowed: boolean;
@@ -13,15 +15,15 @@ export async function checkPooledRateLimit(): Promise<{
   const rpdKey = `gemini:rpd:${currentDay}`;
 
   const [rpmCount, rpdCount] = await Promise.all([
-    kv.incr(rpmKey),
-    kv.incr(rpdKey),
+    redis.incr(rpmKey),
+    redis.incr(rpdKey),
   ]);
 
   if (rpmCount === 1) {
-    await kv.expire(rpmKey, 60);
+    await redis.expire(rpmKey, 60);
   }
   if (rpdCount === 1) {
-    await kv.expire(rpdKey, 86400);
+    await redis.expire(rpdKey, 86400);
   }
 
   const RPM_LIMIT = 5;
@@ -58,7 +60,7 @@ export async function getDailyUsage(): Promise<{
   const currentDay = Math.floor(now / 86400000);
   const rpdKey = `gemini:rpd:${currentDay}`;
 
-  const rpdCount = (await kv.get(rpdKey)) as number | null;
+  const rpdCount = (await redis.get(rpdKey)) as number | null;
 
   const total = 20;
   const used = rpdCount || 0;

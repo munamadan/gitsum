@@ -1,4 +1,6 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 export interface GitHubTreeItem {
   path: string;
@@ -65,7 +67,7 @@ export async function getRepoTree(
   token?: string
 ): Promise<GitHubTreeItem[]> {
   const cacheKey = `github:tree:${owner}:${repo}`;
-  const cached = await kv.get<string>(cacheKey);
+  const cached = await redis.get<string>(cacheKey);
 
   if (cached) {
     return JSON.parse(cached);
@@ -96,7 +98,7 @@ export async function getRepoTree(
 
   const tree = data.tree.filter((item: GitHubTreeItem) => item.type === 'blob');
 
-  await kv.set(cacheKey, JSON.stringify(tree), { ex: 3600 });
+  await redis.set(cacheKey, JSON.stringify(tree), { ex: 3600 });
 
   return tree;
 }
