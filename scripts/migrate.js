@@ -1,3 +1,4 @@
+require('dotenv').config({ path: '.env.local' });
 const { sql } = require('@vercel/postgres');
 
 async function migrate() {
