@@ -10,7 +10,7 @@ export interface AnalysisResult {
   osSpecificNotes?: string;
 }
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 function constructSystemPrompt(repoName: string, userOS?: string): string {
   let prompt = `You are a developer assistant analyzing a GitHub repository to create setup instructions.
@@ -122,14 +122,26 @@ async function callGeminiAPI(prompt: string, apiKey: string, maxRetries = 3): Pr
 }
 
 function extractJSON(text: string): any {
+  if (typeof text !== 'string') {
+    console.error('extractJSON received non-string:', typeof text, text);
+    throw new Error('Expected string but received ' + typeof text);
+  }
+  
   const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) ||
                     text.match(/\{[\s\S]*\}/);
-
+  
   if (!jsonMatch) {
+    console.error('No JSON found in Gemini response. First 500 chars:', text.substring(0, 500));
     throw new Error('No JSON found in Gemini response');
   }
-
+  
   const jsonStr = jsonMatch[1] || jsonMatch[0];
+  
+  if (typeof jsonStr !== 'string') {
+    console.error('Matched JSON is not a string:', typeof jsonStr, jsonStr);
+    throw new Error('Extracted JSON is not a string');
+  }
+  
   return JSON.parse(jsonStr);
 }
 
