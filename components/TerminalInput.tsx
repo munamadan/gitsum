@@ -44,6 +44,8 @@ export default function TerminalInput() {
     setError(null);
 
     try {
+      console.log('Submitting analysis request:', { repoUrl, os });
+      
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
@@ -57,7 +59,10 @@ export default function TerminalInput() {
         }),
       });
 
+      console.log('Response status:', response.status, response.statusText);
+      
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (!response.ok) {
         const errorInfo: ErrorInfo = {
@@ -84,6 +89,7 @@ export default function TerminalInput() {
         setStatus('queued');
       }
     } catch (err) {
+      console.error('Submit error:', err);
       setError({
         message: err instanceof Error ? err.message : 'An unknown error occurred',
       });

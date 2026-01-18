@@ -17,10 +17,12 @@ const analyzeSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log('Received analyze request:', { repoUrl: body.repoUrl, os: body.os });
 
     const parsed = analyzeSchema.safeParse(body);
 
     if (!parsed.success) {
+      console.error('Validation failed:', parsed.error.errors);
       return NextResponse.json(
         {
           error: 'Validation error',
@@ -31,6 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { repoUrl, os, geminiKey, githubToken } = parsed.data;
+    console.log('Parsed data:', { repoUrl, os, hasGeminiKey: !!geminiKey, hasGithubToken: !!githubToken });
 
     let sessionId: string | null | undefined = request.cookies.get('session_id')?.value || null;
     let usingUserKey = false;
