@@ -44,7 +44,7 @@ export default function TerminalInput() {
     setError(null);
 
     try {
-      console.log('Submitting analysis request:', { repoUrl, os });
+      console.log('Submitting analysis request:', JSON.stringify({ repoUrl, os }));
       
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -62,7 +62,7 @@ export default function TerminalInput() {
       console.log('Response status:', response.status, response.statusText);
       
       const data = await response.json();
-      console.log('Response data:', data);
+      console.log('Response data:', JSON.stringify(data));
 
       if (!response.ok) {
         const errorInfo: ErrorInfo = {
@@ -71,6 +71,8 @@ export default function TerminalInput() {
           resetAt: data.resetAt,
           isRateLimit: response.status === 429,
         };
+
+        console.error('API Error:', JSON.stringify(errorInfo));
 
         // Auto-expand advanced options on rate limit
         if (errorInfo.isRateLimit) {
@@ -89,7 +91,7 @@ export default function TerminalInput() {
         setStatus('queued');
       }
     } catch (err) {
-      console.error('Submit error:', err);
+      console.error('Submit error:', err instanceof Error ? err.message : String(err));
       setError({
         message: err instanceof Error ? err.message : 'An unknown error occurred',
       });

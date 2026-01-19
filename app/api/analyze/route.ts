@@ -8,7 +8,7 @@ import { nanoid } from 'nanoid';
 import { sql } from '@vercel/postgres';
 
 const analyzeSchema = z.object({
-  repoUrl: z.string().url().regex(/^https:\/\/github\.com\/[^\/]+\/[^\/]+\/?$/, 'Invalid GitHub URL'),
+  repoUrl: z.string().url().regex(/^https:\/\/github\.com\/[^\/]+\/[^\/]+(\/)?$/, 'Invalid GitHub URL'),
   os: z.enum(['windows', 'macos', 'linux', 'all']).optional().default('all'),
   geminiKey: z.string().optional(),
   githubToken: z.string().optional(),
@@ -23,10 +23,11 @@ export async function POST(request: NextRequest) {
 
     if (!parsed.success) {
       console.error('Validation failed:', parsed.error.errors);
+      const errorMsg = parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
       return NextResponse.json(
         {
           error: 'Validation error',
-          message: parsed.error.errors[0].message,
+          message: errorMsg,
         },
         { status: 400 }
       );
