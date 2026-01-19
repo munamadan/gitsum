@@ -69,8 +69,13 @@ export async function getRepoTree(
   const cacheKey = `github:tree:${owner}:${repo}`;
   const cached = await redis.get<string>(cacheKey);
 
-  if (cached) {
-    return JSON.parse(cached);
+  if (cached && typeof cached === 'string') {
+    try {
+      return JSON.parse(cached);
+    } catch (error) {
+      console.error('Failed to parse cached GitHub tree:', error);
+      // Fall through to fetch fresh data
+    }
   }
 
   const headers: HeadersInit = {
