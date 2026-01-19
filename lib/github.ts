@@ -91,23 +91,62 @@ export async function getRepoTree(
   repo: string,
   token?: string
 ): Promise<GitHubTreeItem[]> {
-  const requestId = `github-tree-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const requestId = Date.now();
   const cacheKey = `github:tree:${owner}:${repo}`;
-  console.log(`[${requestId}] === getRepoTree START ===`);
-  console.log(`[${requestId}] Owner/Repo:`, owner, repo);
-  
+  console.log('getRepoTree: Checking cache for', owner, repo);
+
   const cached = await redis.get<string>(cacheKey);
 
-  if (cached && typeof cached === 'string') {
-    console.log(`[${requestId}] Cache HIT - found cached data`);
+  if (cached) {
+    console.log('getRepoTree: Cache HIT');
     try {
-      const parsed = JSON.parse(cached);
-      console.log(`[${requestId}] Cache parsed successfully, tree size:`, parsed.length);
-      return parsed;
+      return JSON.parse(cached);
     } catch (error) {
-      console.error(`[${requestId}] Failed to parse cached GitHub tree:`, error);
-      // Fall through to fetch fresh data
+      console.error('Failed to parse cached GitHub tree:', error);
     }
+  }
+
+  console.log('getRepoTree: Cache MISS');
+  const headers: HeadersInit = {
+    Accept: 'application/vnd.github.v3+json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    console.log('getRepoTree: Using GitHub token');
+  }
+
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    console.error('GitHub API error:', response.status, response.statusText);
+    if (response.status === 404) {
+      throw new Error('Repository not found or is private');
+    }
+    if (response.status === 403 || response.status === 401) {
+      throw new Error('GitHub API authentication failed. Please check your token.');
+    }
+    throw new Error(`GitHub API error: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log('getRepoTree: Tree size:', data.tree?.length);
+
+  if (data.truncated) {
+    console.warn('Repository tree was truncated by GitHub API');
+  }
+
+  const tree = data.tree.filter((item: GitHubTreeItem) => item.type === 'blob');
+  console.log('getRepoTree: Filtered to', tree.length, 'blobs');
+
+  await redis.set(cacheKey, JSON.stringify(tree), { ex: 3600 });
+  console.log('getRepoTree: Cached tree for 1 hour');
+
+  return tree;
+}
   }
 
   console.log(`[${requestId}] Cache MISS - fetching from GitHub API`);
