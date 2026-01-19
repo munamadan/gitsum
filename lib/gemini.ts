@@ -198,3 +198,4 @@ export async function analyzeCodebase(
     throw new Error('Failed to parse Gemini API response. Please try again.');
   }
 }
+// Cache bust: Mon Jan 19 11:05:15 AM +0545 2026
