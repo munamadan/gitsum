@@ -34,10 +34,18 @@ export async function getRepoMetadata(
   url: string,
   token?: string
 ): Promise<GitHubRepoMetadata> {
+  const requestId = `github-meta-${Date.now()}`;
+  console.log(`[${requestId}] === GITHUB: getRepoMetadata START ===`);
+  console.log(`[${requestId}] URL:`, url);
+  console.log(`[${requestId}] Has token:`, !!token);
+  
   const parsed = parseGitHubUrl(url);
   if (!parsed) {
+    console.error(`[${requestId}] Invalid GitHub URL format:`, url);
     throw new Error('Invalid GitHub URL format');
   }
+
+  console.log(`[${requestId}] Parsed:`, { owner: parsed.owner, repo: parsed.repo });
 
   const headers: HeadersInit = {
     Accept: 'application/vnd.github.v3+json',
@@ -47,18 +55,35 @@ export async function getRepoMetadata(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  console.log(`[${requestId}] Fetching from GitHub API...`);
   const response = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
     headers,
   });
 
+  console.log(`[${requestId}] GitHub API response status:`, response.status);
+
   if (!response.ok) {
     if (response.status === 404) {
+      console.error(`[${requestId}] Repository not found`);
       throw new Error('Repository not found or is private');
     }
+    if (response.status === 403 || response.status === 401) {
+      console.error(`[${requestId}] Authentication failed`);
+      throw new Error('GitHub API authentication failed. Please check your token.');
+    }
+    console.error(`[${requestId}] GitHub API error:`, response.statusText);
     throw new Error(`GitHub API error: ${response.statusText}`);
   }
 
-  return response.json();
+  const metadata = await response.json();
+  console.log(`[${requestId}] Repository metadata:`, {
+    name: metadata.name,
+    size: metadata.size,
+    isPrivate: metadata.private,
+    language: metadata.language
+  });
+  
+  return metadata;
 }
 
 export async function getRepoTree(
@@ -66,12 +91,68 @@ export async function getRepoTree(
   repo: string,
   token?: string
 ): Promise<GitHubTreeItem[]> {
+  const requestId = `github-tree-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   const cacheKey = `github:tree:${owner}:${repo}`;
+  console.log(`[${requestId}] === getRepoTree START ===`);
+  console.log(`[${requestId}] Owner/Repo:`, owner, repo);
+  
   const cached = await redis.get<string>(cacheKey);
 
-  if (cached) {
-    return JSON.parse(cached);
+  if (cached && typeof cached === 'string') {
+    console.log(`[${requestId}] Cache HIT - found cached data`);
+    try {
+      const parsed = JSON.parse(cached);
+      console.log(`[${requestId}] Cache parsed successfully, tree size:`, parsed.length);
+      return parsed;
+    } catch (error) {
+      console.error(`[${requestId}] Failed to parse cached GitHub tree:`, error);
+      // Fall through to fetch fresh data
+    }
   }
+
+  console.log(`[${requestId}] Cache MISS - fetching from GitHub API`);
+
+  const headers: HeadersInit = {
+    Accept: 'application/vnd.github.v3+json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  console.log(`[${requestId}] Fetching tree from GitHub API...`);
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    console.error(`[${requestId}] GitHub API error:`, response.status, response.statusText);
+    if (response.status === 404) {
+      throw new Error('Repository not found or is private');
+    }
+    if (response.status === 403 || response.status === 401) {
+      throw new Error('GitHub API authentication failed. Please check your token.');
+    }
+    throw new Error(`GitHub API error: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log(`[${requestId}] GitHub API response received, tree size:`, data.tree?.length);
+
+  if (data.truncated) {
+    console.warn(`[${requestId}] Repository tree was truncated by GitHub API`);
+  }
+
+  const tree = data.tree.filter((item: GitHubTreeItem) => item.type === 'blob');
+  console.log(`[${requestId}] Filtered to`, tree.length, 'blobs');
+
+  console.log(`[${requestId}] Caching tree for 3600s`);
+  await redis.set(cacheKey, JSON.stringify(tree), { ex: 3600 });
+  console.log(`[${requestId}] === getRepoTree END ===`);
+
+  return tree;
+}
 
   const headers: HeadersInit = {
     Accept: 'application/vnd.github.v3+json',
@@ -109,6 +190,11 @@ export async function fetchFileContents(
   files: GitHubTreeItem[],
   token?: string
 ): Promise<FileWithContent[]> {
+  const requestId = `github-files-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  console.log(`[${requestId}] === fetchFileContents START ===`);
+  console.log(`[${requestId}] Owner/Repo:`, owner, repo);
+  console.log(`[${requestId}] Files to fetch:`, files.length);
+  
   const headers: HeadersInit = {
     Accept: 'application/vnd.github.v3+json',
   };
@@ -121,13 +207,17 @@ export async function fetchFileContents(
   const results: FileWithContent[] = [];
 
   for (let i = 0; i < files.length; i += batchSize) {
+    const batchNum = Math.floor(i / batchSize) + 1;
     const batch = files.slice(i, i + batchSize);
+    console.log(`[${requestId}] === BATCH ${batchNum}/${Math.ceil(files.length / batchSize)} ===`, batch.length, 'files');
+
     const promises = batch.map(async (file) => {
       try {
+        console.log(`[${requestId}] Fetching:`, file.path);
         const response = await fetch(file.url, { headers });
 
         if (!response.ok) {
-          console.warn(`Failed to fetch ${file.path}: ${response.statusText}`);
+          console.warn(`[${requestId}] Failed to fetch ${file.path}:`, response.status, response.statusText);
           return null;
         }
 
@@ -138,14 +228,22 @@ export async function fetchFileContents(
           content: Buffer.from(data.content, 'base64').toString('utf-8'),
         };
       } catch (error) {
-        console.warn(`Error fetching ${file.path}:`, error);
+        console.error(`[${requestId}] Error fetching ${file.path}:`, error);
         return null;
       }
     });
 
     const batchResults = await Promise.all(promises);
-    results.push(...batchResults.filter((f): f is FileWithContent => f !== null));
+    const validResults = batchResults.filter((f): f is FileWithContent => f !== null);
+    console.log(`[${requestId}] Batch completed:`, validResults.length, 'successfully fetched');
+
+    results.push(...validResults);
   }
+
+  console.log(`[${requestId}] === fetchFileContents END ===`, {
+    totalRequested: files.length,
+    successfullyFetched: results.length
+  });
 
   return results;
 }

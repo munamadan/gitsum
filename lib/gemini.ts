@@ -73,9 +73,17 @@ function constructFilesContext(files: FileWithContent[]): string {
 }
 
 async function callGeminiAPI(prompt: string, apiKey: string, maxRetries = 3): Promise<any> {
+  const requestId = `gemini-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   const url = `${GEMINI_API_URL}?key=${apiKey}`;
-
+  
+  console.log(`[${requestId}] === GEMINI API CALL START ===`);
+  console.log(`[${requestId}] API URL:`, GEMINI_API_URL);
+  console.log(`[${requestId}] Prompt length:`, prompt.length);
+  console.log(`[${requestId}] Max retries:`, maxRetries);
+  
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    console.log(`[${requestId}] === ATTEMPT ${attempt + 1}/${maxRetries} ===`);
+    
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -95,65 +103,97 @@ async function callGeminiAPI(prompt: string, apiKey: string, maxRetries = 3): Pr
         }),
       });
 
+      console.log(`[${requestId}] Response status:`, response.status);
+      console.log(`[${requestId}] Response headers:`, JSON.stringify(Object.fromEntries(response.headers.entries())));
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`[${requestId}] Gemini API error response:`, errorText);
         throw new Error(`Gemini API error (${response.status}): ${errorText}`);
       }
 
       const data = await response.json();
+      console.log(`[${requestId}] Response data structure:`, JSON.stringify({
+        hasCandidates: !!data.candidates,
+        candidatesCount: data.candidates?.length || 0,
+        hasFinishReason: !!data.candidates?.[0]?.finishReason
+      }));
 
       if (!data.candidates || data.candidates.length === 0) {
+        console.error(`[${requestId}] No candidates in response`);
         throw new Error('No response from Gemini API');
       }
 
-      return data.candidates[0].content.parts[0].text;
+      const resultText = data.candidates[0].content.parts[0].text;
+      console.log(`[${requestId}] === SUCCESS ===`);
+      console.log(`[${requestId}] Response text length:`, resultText.length);
+      console.log(`[${requestId}] Response preview:`, resultText.substring(0, 200));
+      
+      return resultText;
     } catch (error) {
-      console.error(`Gemini API attempt ${attempt + 1} failed:`, error);
+      console.error(`[${requestId}] Gemini API attempt ${attempt + 1} failed:`, {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error)
+      });
 
       if (attempt === maxRetries - 1) {
+        console.error(`[${requestId}] === ALL ATTEMPTS FAILED ===`);
         throw error;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      const delayMs = 1000 * (attempt + 1);
+      console.log(`[${requestId}] Retrying after ${delayMs}ms delay`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 
+  console.error(`[${requestId}] === ALL GEMINI API ATTEMPTS FAILED ===`);
   throw new Error('All Gemini API attempts failed');
 }
 
 function extractJSON(text: string): any {
-  console.log('extractJSON received text type:', typeof text);
-  console.log('extractJSON received text length:', text?.length);
-  console.log('extractJSON first 200 chars:', text?.substring(0, 200));
+  console.log('=== extractJSON START ===');
+  console.log('Input text type:', typeof text);
+  console.log('Input text length:', text?.length);
+  console.log('Input text first 300 chars:', text?.substring(0, 300));
   
   if (typeof text !== 'string') {
-    console.error('extractJSON received non-string:', typeof text, text);
+    console.error('❌ extractJSON received non-string:', typeof text, text);
     throw new Error('Expected string but received ' + typeof text);
   }
   
+  console.log('Attempting to find JSON in text...');
   const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) ||
                     text.match(/\{[\s\S]*\}/);
   
   if (!jsonMatch) {
-    console.error('No JSON found in Gemini response. First 500 chars:', text.substring(0, 500));
+    console.error('❌ No JSON found in Gemini response');
+    console.error('First 500 chars:', text.substring(0, 500));
+    console.error('Full response:', text);
     throw new Error('No JSON found in Gemini response');
   }
   
+  console.log('✓ JSON pattern matched:', !!jsonMatch);
   const jsonStr = jsonMatch[1] || jsonMatch[0];
-  console.log('extractJSON matched string, length:', jsonStr?.length);
-  console.log('extractJSON matched string first 100 chars:', jsonStr?.substring(0, 100));
+  console.log('Matched JSON string length:', jsonStr?.length);
+  console.log('Matched JSON first 150 chars:', jsonStr?.substring(0, 150));
   
   if (typeof jsonStr !== 'string') {
-    console.error('Matched JSON is not a string:', typeof jsonStr, jsonStr);
+    console.error('❌ Matched JSON is not a string:', typeof jsonStr, jsonStr);
     throw new Error('Extracted JSON is not a string');
   }
   
   try {
-    return JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
+    console.log('✓ JSON parsed successfully');
+    console.log('Parsed structure:', Object.keys(parsed).join(', '));
+    console.log('=== extractJSON END ===');
+    return parsed;
   } catch (parseError) {
-    console.error('JSON parse error:', parseError);
-    console.error('Failed to parse string:', jsonStr.substring(0, 500));
-    throw new Error('Failed to parse JSON from Gemini response');
+    console.error('❌ JSON parse error:', parseError);
+    console.error('Failed to parse string (first 300 chars):', jsonStr.substring(0, 300));
+    console.error('=== extractJSON FAILED ===');
+    throw new Error('Failed to parse JSON from Gemini response: ' + (parseError instanceof Error ? parseError.message : String(parseError)));
   }
 }
 
