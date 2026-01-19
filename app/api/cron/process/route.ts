@@ -80,9 +80,11 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         console.error(`Job ${job.id} failed:`, error);
 
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
         await sql`
           UPDATE jobs
-          SET status = 'failed', error = ${error instanceof Error ? error.message : 'Unknown error'}::text, completed_at = NOW()
+          SET status = 'failed', error = ${errorMessage}::text, completed_at = NOW()
           WHERE id = ${job.id}
         `;
       }
