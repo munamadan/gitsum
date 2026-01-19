@@ -10,7 +10,7 @@ export interface AnalysisResult {
   osSpecificNotes?: string;
 }
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent';
 
 function constructSystemPrompt(repoName: string, userOS?: string): string {
   let prompt = `You are a developer assistant analyzing a GitHub repository to create setup instructions.
