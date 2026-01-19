@@ -122,6 +122,10 @@ async function callGeminiAPI(prompt: string, apiKey: string, maxRetries = 3): Pr
 }
 
 function extractJSON(text: string): any {
+  console.log('extractJSON received text type:', typeof text);
+  console.log('extractJSON received text length:', text?.length);
+  console.log('extractJSON first 200 chars:', text?.substring(0, 200));
+  
   if (typeof text !== 'string') {
     console.error('extractJSON received non-string:', typeof text, text);
     throw new Error('Expected string but received ' + typeof text);
@@ -136,13 +140,21 @@ function extractJSON(text: string): any {
   }
   
   const jsonStr = jsonMatch[1] || jsonMatch[0];
+  console.log('extractJSON matched string, length:', jsonStr?.length);
+  console.log('extractJSON matched string first 100 chars:', jsonStr?.substring(0, 100));
   
   if (typeof jsonStr !== 'string') {
     console.error('Matched JSON is not a string:', typeof jsonStr, jsonStr);
     throw new Error('Extracted JSON is not a string');
   }
   
-  return JSON.parse(jsonStr);
+  try {
+    return JSON.parse(jsonStr);
+  } catch (parseError) {
+    console.error('JSON parse error:', parseError);
+    console.error('Failed to parse string:', jsonStr.substring(0, 500));
+    throw new Error('Failed to parse JSON from Gemini response');
+  }
 }
 
 export async function analyzeCodebase(
