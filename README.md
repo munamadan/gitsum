@@ -27,7 +27,7 @@ A web application that analyzes public GitHub repositories and generates compreh
 - Vercel Serverless Functions
 - Vercel Postgres (Neon Database)
 - Vercel KV (Redis)
-- Gemini 1.5 Flash API
+- Gemini 3.0 Flash API
 - GitHub REST API
 
 ## Setup Instructions

@@ -34,19 +34,20 @@ export async function getRepoMetadata(
   url: string,
   token?: string
 ): Promise<GitHubRepoMetadata> {
+  const { owner, repo } = parseGitHubUrl(url) || { owner: '', repo: '' };
   const requestId = Date.now();
-  console.log('getRepoTree: Checking cache for', owner, repo);
+  console.log('getRepoMetadata: Fetching for', owner, repo);
 
-  const headers = {
+  const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
   };
 
   if (token) {
-    headers['Authorization'] = \`Bearer \${token}\`;
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const response = await fetch(
-    \`https://api.github.com/repos/\${owner}/\${repo}\`,
+    `https://api.github.com/repos/${owner}/${repo}`,
     { headers }
   );
 
@@ -57,7 +58,7 @@ export async function getRepoMetadata(
     if (response.status === 403 || response.status === 401) {
       throw new Error('GitHub API authentication failed. Please check your token.');
     }
-    throw new Error(\`GitHub API error: \${response.statusText}\`);
+    throw new Error(`GitHub API error: ${response.statusText}`);
   }
 
   return await response.json();
@@ -68,7 +69,7 @@ export async function getRepoTree(
   repo: string,
   token?: string
 ): Promise<GitHubTreeItem[]> {
-  const cacheKey = \`github:tree:\${owner}:\${repo}\`;
+  const cacheKey = `github:tree:${owner}:${repo}`;
   const cached = await redis.get<string>(cacheKey);
 
   if (cached) {
@@ -82,13 +83,21 @@ export async function getRepoTree(
 
   console.log('getRepoTree: Cache MISS');
 
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(
-    \`https://api.github.com/repos/\${owner}/\${repo}/git/trees/HEAD?recursive=1\`,
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
     { headers }
   );
 
   if (!response.ok) {
-    throw new Error(\`GitHub API error: \${response.statusText}\`);
+    throw new Error(`GitHub API error: ${response.statusText}`);
   }
 
   const data = await response.json();
@@ -111,12 +120,12 @@ export async function fetchFileContents(
   files: GitHubTreeItem[],
   token?: string
 ): Promise<FileWithContent[]> {
-  const headers = {
+  const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
   };
 
   if (token) {
-    headers['Authorization'] = \`Bearer \${token}\`;
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const batchSize = 50;
